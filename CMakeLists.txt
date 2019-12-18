@@ -12,7 +12,7 @@ set(C_SRC	"src/main.c")
 
 include_directories("include")
 
-add_definitions("-DPID_FILE=\"${PROJ_NAME}.pid\"")
+add_definitions("-DPID_FILE=\"/var/run/${PROJ_NAME}.pid\"")
 
 add_executable(${PROJ_NAME} ${C_SRC})
 
