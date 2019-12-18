@@ -4,9 +4,6 @@
  * @brief	Точка входа.
  *
  * @author	Vasily Yurchenko <vasily.v.yurchenko@yandex.ru>
- *
- *
- *
  */
 
 #include <stdint.h>
@@ -15,9 +12,31 @@
 #include <getopt.h>
 #include <stdio.h>
 #include <signal.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <stddef.h>
+
+/** Неверное количество аргументов. */
+#define	ERR_OPT						1
+/** Ошибка установки обработчика сигналов. */
+#define ERR_SIG_SETUP				2
+/** Неверное состояние. */
+#define ERR_INV_MODE				3
+/** pid-файл существует, но не может быть открыт. */
+#define ERR_PID_EXIST_CNTBEOPND		4
+/** pid-файл существует, но не может быть прочитан. */
+#define ERR_PID_EXIST_CNTBERD		5
+
+/** Допустимое количество символов пллюс нулевой символ строкового представления PID. */
+#define STR_PID_LEN	33
+
+/** Флаг необходимости завершить работу программы. */
+uint32_t exit_flag = 0;
 
 /**
- *
+ * @brief	Выводит информацию о запуске и использовании программы.
  */
 static void display_usage(void)
 {
@@ -25,37 +44,105 @@ static void display_usage(void)
 	/* TODO: Реализовать. */
 }
 
-uint32_t exit_flag = 0;
-static void handleSignal(int32_t sigNum) {
 
-	switch (sigNum) {
+/**
+ * @brief	Обрабатывает полученные сигналы.
+ */
+static void daemon_signal_handle(int32_t sig_num) {
+
+	switch (sig_num) {
 		case SIGINT:
 		printf("Someone wants to stop application\n");
 		exit_flag = 1;
 		break;
 	default:
-		printf("Unregistered signal received: %d\n", sigNum);
+		printf("Unregistered signal received: %d\n", sig_num);
 		exit(-1);
 		break;
 	}
 }
 
 /**
+ * @brief	Переводит процесс в состояние демона,
+ * 			готовит UDP для передачи идентификационной информации
  *
- */
-static int sig_handler_init(void)
-{
-	/* TODO: Реализовать. */
-	struct sigaction act;
-	act.sa_handler = handleSignal;
-	return sigaction(SIGINT, &act, NULL);
-}
-
-/**
- *
+ * @return	TODO: Сделать описание
  */
 static int daemon_start(void)
 {
+	/** Перевести процесс в состояние демона. */
+	/* TODO: Реализовать. */
+
+	/** Установить рабочую директорию "/" чтобы не зависеть других директорий,
+	 * которые могут удаляться/отмонтироваться во время работы. */
+	chdir("/");
+
+	/** Открыть pid-файл для сохранения идентификатора демона.
+	 * Если файл существует, то прочитать содержащийся в нем PID,
+	 * если процесс с таким PID есть в системе,
+	 * то завершаем программу - в системе уже есть одна ее копия. */
+	int pid_fd = open(PID_FILE, O_RDWR | O_CREAT | O_EXCL, 664);
+
+	if (pid_fd == -1) {
+		/** pid-файл уже существует. */
+		if (errno == EEXIST) {
+
+			pid_fd = open(PID_FILE, O_RDONLY);
+			if (pid_fd == -1) {
+				printf("pid-файл существует, но не может быть открыт.\nУдалите файл вручную.\n");
+				return -ERR_PID_EXIST_CNTBEOPND;
+			}
+
+			char str_pid[STR_PID_LEN];
+			ssize_t read_cnt = read(pid_fd, str_pid, STR_PID_LEN - 1);
+			if (read_cnt == -1) {
+				printf("pid-файл существует, но не может быть прочитан.\nУдалите файл вручную.\n");
+				return -ERR_PID_EXIST_CNTBERD;
+			}
+
+			int32_t pid = atoi(str_pid);
+
+			/** Проверить наличие процесса в системе отправкой нулевого сигнала. */
+			if (kill(pid, 0) == 0) {
+				/** Процесс существует в системе. */
+				/* TODO: Реализовать. */
+			} else {
+
+				if (errno == EPERM) {
+					/** Процесс более приоритетен чтобы ему данный процесс отправил сигнал. */
+					/* TODO: Реализовать. */
+
+				} else if (errno == ESRCH) {
+					/** Процесс не существует в системе. */
+					/* TODO: Реализовать. */
+
+				} else {
+					/** Ошибка отправки сигнала. */
+					/* TODO: Реализовать. */
+
+				}
+			}
+
+		/*if (errno == EEXIST)*/
+		} else {
+			/** Ошибка создания pid-файла. */
+			/* А что если файл открыт и заблокирован на чтение? Такое возможно? */
+		}
+
+		/* TODO: Файл создан, сохранить в него PID. Файл НЕ закрывать. */
+	}
+
+	/** Создать дочерний процесс и оставить только его.*/
+
+	/** Зарегистрировать обработчики сигналов. */
+	struct sigaction act;
+	act.sa_handler = daemon_signal_handle;
+	return sigaction(SIGINT, &act, NULL);
+
+	/** Получить идентификационную информацию. */
+	/* TODO: Продумать, откуда будет процесс получать информаци. Реализовать. */
+
+	/** Подготовить UDP, начать циклическую передачу. */
 	/* TODO: Реализовать. */
 }
 
@@ -75,6 +162,9 @@ static int service_start(void)
 	/* TODO: Реализовать. */
 }
 
+/**
+ * @brief	Точка входа в программу.
+ */
 int main(uint32_t argc, char *argv[])
 {
 	/* Последовательность действий:
@@ -130,8 +220,14 @@ int main(uint32_t argc, char *argv[])
 	 *		отправить сообщение о завершении работы процессу с идентификатором PID.
 	 */
 
+	if (argc == 1 || argc > 2) {
+		printf("Программа требует обязятельного указания одного аргумента.\n");
+		display_usage();
+		return -ERR_OPT;
+	}
+
 	/** Перечисление режимов работы программы. */
-	enum mdoe {
+	enum mode {
 		unknown = 0,	/**< Начальный неопределенный режим работы программы. */
 		daemon,			/**< Режим демона, в котором происходит циклическая передача. */
 		client,			/**< Режим клиента, в котором происходит прием.*/
@@ -141,33 +237,53 @@ int main(uint32_t argc, char *argv[])
 	enum mode cur_mode = unknown;
 
 	const char options[] = "dcs";
-	int opt = getopt( argc, argv, options );
+	int opt = getopt(argc, argv, options);
 	while (opt != -1) {
 		switch (opt) {
-			case 'd':
-				cur_mode = daemon;
-				printf("Активирован режим демона.\n");
-				break;
-
-			case 'c':
-				cur_mode = client;
-				printf("Активирован режим клиента.\n");
-				break;
-
-			case 'k':
-				cur_mode = service;
-				printf("Активирован сервисный режим.\n");
-				break;
-
-			case 'h':
-			case '?':
-			default:
-
-				display_usage();
-				break;
-		}
-		if (cur_mode != unknown)
+		case 'd':
+			cur_mode = daemon;
 			break;
+
+		case 'c':
+			cur_mode = client;
+			break;
+
+		case 's':
+			cur_mode = service;
+			break;
+
+		case 'h':
+		case '?':
+		default:
+
+			display_usage();
+			break;
+		}
+
+		/** Выход из цикла while (opt != -1),так как программа
+		 * в настоящее время может обработать только один параметр. */
+		break;
+	}
+
+	switch (cur_mode) {
+		case daemon:
+			printf("Активирован режим демона.\n");
+			daemon_start();
+			break;
+
+		case client:
+			printf("Активирован режим клиента.\n");
+			client_start();
+			break;
+
+		case service:
+			printf("Активирован сервисный режим.\n");
+			service_start();
+			break;
+
+		default:
+
+			return -ERR_INV_MODE;
 	}
 
 	return 0;
