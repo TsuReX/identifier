@@ -37,7 +37,7 @@
 /** Процесс был ранее некорректно завершен. */
 #define ERR_INCORRECT_EXIT			8
 /** Ошибка при отправке сигнала процессе с PID, прочитанным из pid-файла. */
-#define ERR_CNT_DETECT_COPY			9
+#define ERR_SND_SIG					9
 /** Ошибка создания pid-файла. */
 #define ERR_CRT_PID					10
 /** Ошибка создания процесса. */
@@ -50,6 +50,8 @@
 #define ERR_REG_SIG					14
 /** Произошла ошибка определения открытых дескрипторов. */
 #define ERR_CHK_FD					15
+/** Ошибка открытия pid-файла. */
+#define ERR_PIDFILE					16
 
 /** Допустимое количество символов пллюс нулевой символ строкового представления PID. */
 #define STR_PID_LEN	33
@@ -101,7 +103,7 @@ static int daemon_start(void)
 	 * то завершаем программу - в системе уже есть одна ее копия. */
 	int pid_fd = open(PID_FILE, O_RDWR | O_CREAT | O_EXCL, 664);
 
-	char str_pid[STR_PID_LEN];
+	char str_pid[STR_PID_LEN] = "";
 
 	if (pid_fd == -1) {
 		/** pid-файл уже существует. */
@@ -147,7 +149,7 @@ static int daemon_start(void)
 					/** Ошибка отправки сигнала. */
 					printf("Программа не может удостовериться, что в системе не запущена ее копия с PID %d.\n"
 							"Убедитесь, что процесс не запущен, удалите pid-файл %s и повторите запуск приложения.\n", pid, PID_FILE);
-					return -ERR_CNT_DETECT_COPY;
+					return -ERR_SND_SIG;
 
 				}
 			}
@@ -254,14 +256,87 @@ static int daemon_start(void)
 static int client_start(void)
 {
 	/* TODO: Реализовать. */
+	return 0;
 }
 
 /**
+ * @brief	Определяет запущен ли в системе демон и отправляет ему сигнал завершения работы.
  *
+ * @return	0	успешно выполнение функции;
+ * 			< 0	во время выполнения функции произошла ошибка (номер ошибки).
  */
 static int service_start(void)
 {
-	/* TODO: Реализовать. */
+
+	/** Открыть pid-файл. */
+	int pid_fd = open(PID_FILE, O_RDONLY);
+	if (pid_fd == -1) {
+		/* TODO: Обработать различные возвращаемые значения чтобы различать отсутствие файла, нехватку прав на доступ и т.п.. */
+		printf("Невозможно открыть файл %s.\n", PID_FILE);
+		return -ERR_PIDFILE;
+	}
+
+	char str_pid[STR_PID_LEN] = "";
+
+	/** Прочитать значение PID. */
+	int rd_cnt = read(pid_fd, str_pid, STR_PID_LEN);
+	/* TODO: Обработать возвращаемые значения. */
+
+	int daemon_pid = atoi(str_pid);
+	printf("PID: %d\n", daemon_pid);
+
+	/** Отправить сигнал завершения. */
+	if (kill(daemon_pid, SIGINT) == -1) {
+
+		if (errno == EPERM) {
+			/** Процесс более приоритетный чтобы ему данный процесс отправил сигнал. */
+			printf("Демон имеет более высокие привелегии.\n");
+			return -ERR_SUPER_PROC_EXIST;
+
+		} else if (errno == ESRCH) {
+			/** Процесс не существует в системе. */
+			printf("Процесс был ранее некорректно завершен.\nУдалите pid-файл %s вручную и повтоно запустите программу.\n", PID_FILE);
+			return -ERR_INCORRECT_EXIT;
+
+		} else {
+			/** Ошибка отправки сигнала. */
+			printf("Ошибка отправки сигнала демону %d.\n", daemon_pid);
+			return -ERR_SND_SIG;
+		}
+	}
+	/** Подождать некоторое время. */
+	sleep(5);
+
+	/** Проверить отсутствие процесса в системе и выдать соответствующее сообщение. */
+	if (kill(daemon_pid, 0) == 0) {
+
+		/** Процесс существует в системе. */
+		printf("Не удалось завершить демон.\n");
+		return -ERR_PROC_EXIST;
+
+	} else {
+
+		if (errno == EPERM) {
+			/** Процесс более приоритетный чтобы ему данный процесс отправил сигнал. */
+			printf("Демон имеет более высокие привелегии.\n");
+			return -ERR_SUPER_PROC_EXIST;
+
+		} else if (errno == ESRCH) {
+			/** Процесс не существует в системе. */
+			printf("Демон завершен.\n");
+
+		} else {
+			/** Ошибка отправки сигнала. */
+			printf("Ошибка отправки сигнала демону %d.\n", daemon_pid);
+			return -ERR_SND_SIG;
+
+		}
+	}
+
+	/** Закрыть pid-файл. */
+	close(pid_fd);
+
+	return 0;
 }
 
 /**
