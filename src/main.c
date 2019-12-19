@@ -19,6 +19,9 @@
 #include <stddef.h>
 #include <time.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 /** Неверное количество аргументов. */
 #define	ERR_OPT						1
@@ -54,7 +57,9 @@
 #define ERR_PIDFILE					16
 
 /** Допустимое количество символов пллюс нулевой символ строкового представления PID. */
-#define STR_PID_LEN	33
+#define STR_PID_LEN		33
+/** UDP порт на который осуществляется щироковещательная рассылка. */
+#define UDP_PORT		12345
 
 /** Флаг необходимости завершить работу программы. */
 uint32_t exit_flag = 0;
@@ -232,7 +237,36 @@ static int daemon_start(void)
 	/** Подготовить UDP, начать циклическую передачу. */
 	/* TODO: Реализовать. */
 
-	remove("/tmp/test.txt");
+	int sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
+	/* TODO: Обработать возвращаемые значения. */
+
+	int enable = 1;
+	setsockopt(sock_fd, SOL_SOCKET, SO_BROADCAST, &enable, sizeof(enable));
+	/* TODO: Обработать возвращаемые значения. */
+
+	struct sockaddr_in broadcast_addr;
+
+	size_t sockaddr_len = sizeof(struct sockaddr_in);
+
+	struct identifier {
+		uint32_t value;
+	} __attribute__((packed));
+
+	struct identifier ident = {0xDEADBEEF};
+
+	broadcast_addr.sin_family		= AF_INET;
+	broadcast_addr.sin_port			= htons(UDP_PORT);
+	broadcast_addr.sin_addr.s_addr	= INADDR_BROADCAST;
+
+	while (exit_flag == 0) {
+		sendto(sock_fd, &ident, sizeof(ident), 0, (struct sockaddr *)&broadcast_addr, sizeof(broadcast_addr));
+		/* TODO: Обработать возвращаемые значения. */
+		sleep(1);
+	}
+	close(sock_fd);
+
+	/* TODO: После испытания UDP передачи убрать тестовый цикл. */
+/*	remove("/tmp/test.txt");
 	int test_fd = open("/tmp/test.txt", O_CREAT | O_RDWR);
 	struct timespec time_val;
 	char str_time_val[33];
@@ -244,7 +278,7 @@ static int daemon_start(void)
 	}
 	close(test_fd);
 	remove("/tmp/test.txt");
-
+*/
 	/** Закрыть и удалить pid-файл. */
 	close(pid_fd);
 	remove(PID_FILE);
