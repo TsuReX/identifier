@@ -44,6 +44,12 @@
 #define ERR_CRT_PROC				11
 /** Ошибка создания новой сессии. */
 #define ERR_CRT_SES					12
+/** Ошибка при записи pid-файла. */
+#define ERR_CRT_PIDFILE				13
+/** Произошла ошибка регистрации обработчика сигналов. */
+#define ERR_REG_SIG					14
+/** Произошла ошибка определения открытых дескрипторов. */
+#define ERR_CHK_FD					15
 
 /** Допустимое количество символов пллюс нулевой символ строкового представления PID. */
 #define STR_PID_LEN	33
@@ -60,33 +66,32 @@ static void display_usage(void)
 	/* TODO: Реализовать. */
 }
 
-
 /**
  * @brief	Обрабатывает полученные сигналы.
+ * 			При поступлении сигнала SIGINT происходит корректное завершение работы.
+ * 			При поступлении иных сигналов просиходит принудительное завершение.
  */
 static void daemon_signal_handle(int32_t sig_num) {
 
 	switch (sig_num) {
 		case SIGINT:
-		printf("Someone wants to stop application\n");
-		exit_flag = 1;
-		break;
-	default:
-		printf("Unregistered signal received: %d\n", sig_num);
-		exit(-1);
-		break;
+			exit_flag = 1;
+			break;
+		default:
+			exit(-1);
 	}
 }
 
 /**
  * @brief	Переводит процесс в состояние демона,
- * 			готовит UDP для передачи идентификационной информации
+ * 			готовит UDP для передачи идентификационной информации.
  *
- * @return	TODO: Сделать описание
+ * @return	0	успешно выполнение функции;
+ * 			< 0	во время выполнения функции произошла ошибка (номер ошибки).
  */
 static int daemon_start(void)
 {
-	/** Установить рабочую директорию "/" чтобы не зависеть других директорий,
+	/** Установить рабочую директорию "/" чтобы не зависеть от других директорий,
 	 * которые могут удаляться/отмонтироваться во время работы. */
 	chdir("/");
 
@@ -178,23 +183,46 @@ static int daemon_start(void)
 	/** Файл создан, сохранить в него PID. Файл НЕ закрывать. */
 	current_pid = getpid();
 	snprintf(str_pid, sizeof(str_pid) - 1, "%d\n", current_pid);
-	write(pid_fd, str_pid, strlen(str_pid));
-	/* TODO: Реализовать  проверку возвращаемого значения. */
+	int wr_cnt = write(pid_fd, str_pid, strlen(str_pid));
+	if (wr_cnt ==-1 || wr_cnt < strlen(str_pid)) {
+		printf("Произошла ошибка при записи pid-файла.\n");
+		close(pid_fd);
+		remove(PID_FILE);
+		return -ERR_CRT_PIDFILE;
+	}
 
 	/** Cоздать новый сеанс, чтобы не зависеть от родительского процесса. */
 	if (setsid() < 0 ) {
 		printf("Произошла ошибка создания нового сеанса.\n");
-		perror("");
 		close(pid_fd);
 		remove(PID_FILE);
 		return -ERR_CRT_SES;
 	}
 
+	/** Закрыть все дескрипторы кроме pid-файла. */
+	int max_fd = sysconf(_SC_OPEN_MAX);
+	if (max_fd == -1) {
+		printf("Произошла ошибка определения открытых дескрипторов.\n");
+		close(pid_fd);
+		remove(PID_FILE);
+		return -ERR_CHK_FD;
+	}
+
+	int fd;
+	for (fd = 0; fd <= max_fd; ++fd) {
+		if (fd != pid_fd)
+			close(fd);
+	}
+
 	/** Зарегистрировать обработчики сигналов. */
 	struct sigaction act;
 	act.sa_handler = daemon_signal_handle;
-	sigaction(SIGINT, &act, NULL);
-	/* TODO: Реализовать  проверку возвращаемого значения. */
+	if (sigaction(SIGINT, &act, NULL) == -1) {
+		printf("Произошла ошибка регистрации обработчика сигналов.\n");
+		close(pid_fd);
+		remove(PID_FILE);
+		return -ERR_REG_SIG;
+	}
 
 	/** Получить идентификационную информацию. */
 	/* TODO: Продумать, откуда будет процесс получать информаци. Реализовать. */
@@ -203,16 +231,16 @@ static int daemon_start(void)
 	/* TODO: Реализовать. */
 
 	remove("/tmp/test.txt");
-	int fd = open("/tmp/test.txt", O_CREAT | O_RDWR);
+	int test_fd = open("/tmp/test.txt", O_CREAT | O_RDWR);
 	struct timespec time_val;
 	char str_time_val[33];
 	while(exit_flag == 0) {
 		clock_gettime(CLOCK_REALTIME, &time_val);
 		snprintf(str_time_val, sizeof(str_time_val) - 1, "%ld\n", time_val.tv_sec);
-		write(fd, str_time_val, strlen(str_time_val));
+		write(test_fd, str_time_val, strlen(str_time_val));
 		sleep(1);
 	}
-	close(fd);
+	close(test_fd);
 	remove("/tmp/test.txt");
 
 	/** Закрыть и удалить pid-файл. */
