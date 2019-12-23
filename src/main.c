@@ -22,6 +22,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <poll.h>
+#include <arpa/inet.h>
 
 /** Неверное количество аргументов. */
 #define	ERR_OPT						1
@@ -55,6 +57,8 @@
 #define ERR_CHK_FD					15
 /** Ошибка открытия pid-файла. */
 #define ERR_PIDFILE					16
+/** Произошла ошибка привязки порта к локальному адресу. */
+#define ERR_BIND					17
 
 /** Допустимое количество символов пллюс нулевой символ строкового представления PID. */
 #define STR_PID_LEN		33
@@ -63,6 +67,11 @@
 
 /** Флаг необходимости завершить работу программы. */
 uint32_t exit_flag = 0;
+
+/** TODO: Сделать описание. */
+struct identifier {
+	uint32_t value;
+} __attribute__((packed));
 
 /**
  * @brief	Выводит информацию о запуске и использовании программы.
@@ -248,10 +257,6 @@ static int daemon_start(void)
 
 	size_t sockaddr_len = sizeof(struct sockaddr_in);
 
-	struct identifier {
-		uint32_t value;
-	} __attribute__((packed));
-
 	struct identifier ident = {0xDEADBEEF};
 
 	broadcast_addr.sin_family		= AF_INET;
@@ -289,7 +294,67 @@ static int daemon_start(void)
  */
 static int client_start(void)
 {
-	/* TODO: Реализовать. */
+	int sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
+	/* TODO: Обработать возвращаемые значения. */
+
+	int enable = 1;
+	setsockopt(sock_fd, SOL_SOCKET, SO_BROADCAST, &enable, sizeof(enable));
+	/* TODO: Обработать возвращаемые значения. */
+
+	struct sockaddr_in remote_addr;
+	struct sockaddr_in client_addr;
+	struct identifier ident;
+
+	client_addr.sin_family = AF_INET;
+	client_addr.sin_port = htons(UDP_PORT);
+	client_addr.sin_addr.s_addr = INADDR_ANY;
+
+	if (bind(sock_fd, (struct sockaddr*) &client_addr, sizeof(client_addr)) < 0) {
+		printf("Произошла ошибка привязки порта к локальному адресу.");
+		close(sock_fd);
+		return -ERR_BIND;
+	}
+	printf("Порт привязан к адресу.\n");
+	int len = sizeof(struct sockaddr_in);
+
+	struct pollfd fds[1];
+
+	fds[0].fd = sock_fd;
+	fds[0].events = POLLIN;
+
+	int ret_val;
+
+	while (exit_flag == 0) {
+
+		ret_val = poll(fds, 1, 1000);
+
+		if (ret_val == -1) {
+			/* TODO: Обработать ошибки. */
+			perror("Ошибка опроса сетевого порта");
+		} else if (ret_val == 0) {
+			/* TODO: Обработать таймаут. */
+			printf("Ничего не было принято.\n");
+		} else {
+			if (fds[0].revents & POLLIN) {
+				fds[0].revents = 0;
+				/* TODO: Принять поступившие данные - recvfrom(). */
+				recvfrom(sock_fd, &ident, sizeof(struct identifier), 0, (struct sockaddr*) &remote_addr, &len);
+
+				char client_str_ip[32] = "client_ip";
+				int client_ip = ntohl(client_addr.sin_addr.s_addr);
+
+				char remote_str_ip[32] = "remote_ip";
+				int remote_ip = ntohl(remote_addr.sin_addr.s_addr);
+
+				inet_ntop(AF_INET, &client_ip, client_str_ip, sizeof(struct sockaddr*));
+				inet_ntop(AF_INET, &remote_ip, remote_str_ip, sizeof(struct sockaddr*));
+
+				printf("Локальный адрес: %s, удаленный адрес: %s, идентификатор: 0x%08X\n", client_str_ip, remote_str_ip, ident.value);
+			}
+		}
+	}
+	close(sock_fd);
+
 	return 0;
 }
 
