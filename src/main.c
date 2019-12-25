@@ -346,8 +346,10 @@ static int client_start(void)
 				char remote_str_ip[32] = "remote_ip";
 				int remote_ip = ntohl(remote_addr.sin_addr.s_addr);
 
-				inet_ntop(AF_INET, &client_ip, client_str_ip, sizeof(struct sockaddr*));
-				inet_ntop(AF_INET, &remote_ip, remote_str_ip, sizeof(struct sockaddr*));
+				if (inet_ntop(AF_INET, &client_ip, client_str_ip, 31) == NULL)
+					perror("Ошибка преобразования локального адреса");
+				if (inet_ntop(AF_INET, &remote_ip, remote_str_ip, 31) == NULL)
+					perror("Ошибка преобразования удаленного адреса");
 
 				printf("Локальный адрес: %s, удаленный адрес: %s, идентификатор: 0x%08X\n", client_str_ip, remote_str_ip, ident.value);
 			}
