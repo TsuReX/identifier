@@ -16,4 +16,6 @@ add_definitions("-DPID_FILE=\"/var/run/${PROJ_NAME}.pid\"")
 
 add_executable(${PROJ_NAME} ${C_SRC})
 
+install(TARGETS ${PROJ_NAME} RUNTIME DESTINATION bin)
+
 target_link_libraries(${PROJ_NAME})
