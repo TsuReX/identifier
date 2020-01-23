@@ -78,7 +78,10 @@ struct identifier {
  */
 static void display_usage(void)
 {
-	printf("Вывод информации по использонию программы.\n");
+	printf("An identifier program should be used as follows:\n");
+	printf("to start identification server - identifier -d\n");
+	printf("to stop identification server - identifier -s\n");
+	printf("to start identification client - identifier -c\n");
 	/* TODO: Реализовать. */
 }
 
@@ -126,14 +129,14 @@ static int daemon_start(void)
 			pid_fd = open(PID_FILE, O_RDONLY);
 
 			if (pid_fd == -1) {
-				printf("pid-файл существует, но не может быть открыт.\nУдалите pid-файл %s вручную.\n", PID_FILE);
+				printf("pid-file exists but can't be opened.\n Remove the pid-file %s manually.\n", PID_FILE);
 				return -ERR_PID_EXIST_CNTBEOPND;
 			}
 
 
 			ssize_t read_cnt = read(pid_fd, str_pid, sizeof(str_pid) - 1);
 			if (read_cnt == -1) {
-				printf("pid-файл существует, но не может быть прочитан.\nУдалите pid-файл %s вручную.\n", PID_FILE);
+				printf("pid-file exists but can't be read.\n Remove the pid-file %s manually.\n", PID_FILE);
 				return -ERR_PID_EXIST_CNTBERD;
 			}
 
@@ -144,25 +147,25 @@ static int daemon_start(void)
 			if (kill(pid, 0) == 0) {
 
 				/** Процесс существует в системе. */
-				printf("Запускаемый процесс уже существует в системе.\n");
+				printf("The process is already started.\n");
 				return -ERR_PROC_EXIST;
 
 			} else {
 
 				if (errno == EPERM) {
 					/** Процесс более приоритетный чтобы ему данный процесс отправил сигнал. */
-					printf("Запускаемый процесс уже существует в системе и имеет более высокие привелегии.\n");
+					printf("The process is already started and is more privileged.\n");
 					return -ERR_SUPER_PROC_EXIST;
 
 				} else if (errno == ESRCH) {
 					/** Процесс не существует в системе. */
-					printf("Процесс был ранее некорректно завершен.\nУдалите pid-файл %s вручную и повтоно запустите программу.\n", PID_FILE);
+					printf("A process was earlier incorrectly finished .\nRemove pid-file %s manually and try to start again.\n", PID_FILE);
 					return -ERR_INCORRECT_EXIT;
 
 				} else {
 					/** Ошибка отправки сигнала. */
-					printf("Программа не может удостовериться, что в системе не запущена ее копия с PID %d.\n"
-							"Убедитесь, что процесс не запущен, удалите pid-файл %s и повторите запуск приложения.\n", pid, PID_FILE);
+					printf("The program can't be confident that its copy with PID %d hasn't been started earlier.\n"
+							"Be sure that process wasn't started, remove pid-file %s and try again.\n", pid, PID_FILE);
 					return -ERR_SND_SIG;
 
 				}
@@ -171,7 +174,7 @@ static int daemon_start(void)
 		/*if (errno == EEXIST)*/
 		} else {
 			/** Ошибка создания pid-файла. */
-			printf("pid-файл %s не может быть создан, демон не будет запущен.\n", PID_FILE);
+			printf("pid-file %s can't be created, daemon will not be started.\n", PID_FILE);
 			/* А что если файл открыт и заблокирован на чтение? Такое возможно? */
 			return -ERR_CRT_PID;
 		}
@@ -190,7 +193,7 @@ static int daemon_start(void)
 
 	/** Ошибка создания процесса. */
 	} else {
-		printf("Произошла ошибка создания процесса.\n");
+		printf("Error of new process creating.\n");
 		close(pid_fd);
 		remove(PID_FILE);
 		return -ERR_CRT_PROC;
@@ -201,7 +204,7 @@ static int daemon_start(void)
 	snprintf(str_pid, sizeof(str_pid) - 1, "%d\n", current_pid);
 	int wr_cnt = write(pid_fd, str_pid, strlen(str_pid));
 	if (wr_cnt ==-1 || wr_cnt < strlen(str_pid)) {
-		printf("Произошла ошибка при записи pid-файла.\n");
+		printf("Error of pid-file writing.\n");
 		close(pid_fd);
 		remove(PID_FILE);
 		return -ERR_CRT_PIDFILE;
@@ -209,7 +212,7 @@ static int daemon_start(void)
 
 	/** Cоздать новый сеанс, чтобы не зависеть от родительского процесса. */
 	if (setsid() < 0 ) {
-		printf("Произошла ошибка создания нового сеанса.\n");
+		printf("Error of new session creation.\n");
 		close(pid_fd);
 		remove(PID_FILE);
 		return -ERR_CRT_SES;
@@ -218,7 +221,7 @@ static int daemon_start(void)
 	/** Закрыть все дескрипторы кроме pid-файла. */
 	int max_fd = sysconf(_SC_OPEN_MAX);
 	if (max_fd == -1) {
-		printf("Произошла ошибка определения открытых дескрипторов.\n");
+		printf("Error of opened descriptors determining.\n");
 		close(pid_fd);
 		remove(PID_FILE);
 		return -ERR_CHK_FD;
@@ -234,7 +237,7 @@ static int daemon_start(void)
 	struct sigaction act;
 	act.sa_handler = daemon_signal_handle;
 	if (sigaction(SIGINT, &act, NULL) == -1) {
-		printf("Произошла ошибка регистрации обработчика сигналов.\n");
+		printf("Error of signal handlers setting up.\n");
 		close(pid_fd);
 		remove(PID_FILE);
 		return -ERR_REG_SIG;
@@ -310,11 +313,11 @@ static int client_start(void)
 	client_addr.sin_addr.s_addr = INADDR_ANY;
 
 	if (bind(sock_fd, (struct sockaddr*) &client_addr, sizeof(client_addr)) < 0) {
-		printf("Произошла ошибка привязки порта к локальному адресу.");
+		printf("Error of address binding to a local port.");
 		close(sock_fd);
 		return -ERR_BIND;
 	}
-	printf("Порт привязан к адресу.\n");
+	printf("Address is binded to the port.\n");
 	int len = sizeof(struct sockaddr_in);
 
 	struct pollfd fds[1];
@@ -330,28 +333,29 @@ static int client_start(void)
 
 		if (ret_val == -1) {
 			/* TODO: Обработать ошибки. */
-			perror("Ошибка опроса сетевого порта");
+			perror("Polling network port error");
 		} else if (ret_val == 0) {
 			/* TODO: Обработать таймаут. */
-			printf("Ничего не было принято.\n");
+			/*printf("Ничего не было принято.\n");*/
 		} else {
 			if (fds[0].revents & POLLIN) {
 				fds[0].revents = 0;
 				/* TODO: Принять поступившие данные - recvfrom(). */
 				recvfrom(sock_fd, &ident, sizeof(struct identifier), 0, (struct sockaddr*) &remote_addr, &len);
 
-				char client_str_ip[32] = "client_ip";
-				int client_ip = ntohl(client_addr.sin_addr.s_addr);
+				/*char client_str_ip[32] = "client_ip";
+				int client_ip = ntohl(client_addr.sin_addr.s_addr);*/
 
 				char remote_str_ip[32] = "remote_ip";
-				int remote_ip = ntohl(remote_addr.sin_addr.s_addr);
+				int remote_ip = remote_addr.sin_addr.s_addr;/*ntohl(remote_addr.sin_addr.s_addr);*/
 
-				if (inet_ntop(AF_INET, &client_ip, client_str_ip, 31) == NULL)
-					perror("Ошибка преобразования локального адреса");
+				/*if (inet_ntop(AF_INET, &client_ip, client_str_ip, 31) == NULL)
+					perror("Ошибка преобразования локального адреса");*/
 				if (inet_ntop(AF_INET, &remote_ip, remote_str_ip, 31) == NULL)
-					perror("Ошибка преобразования удаленного адреса");
+					perror("Remote address conversion error");
 
-				printf("Локальный адрес: %s, удаленный адрес: %s, идентификатор: 0x%08X\n", client_str_ip, remote_str_ip, ident.value);
+				/*printf("Local address is: %s, remote address is: %s, identifier: 0x%08X\n", client_str_ip, remote_str_ip, ident.value);*/
+				printf("Remote address is: %s, identifier: 0x%08X\n", remote_str_ip, ident.value);
 			}
 		}
 	}
@@ -373,7 +377,7 @@ static int service_start(void)
 	int pid_fd = open(PID_FILE, O_RDONLY);
 	if (pid_fd == -1) {
 		/* TODO: Обработать различные возвращаемые значения чтобы различать отсутствие файла, нехватку прав на доступ и т.п.. */
-		printf("Невозможно открыть файл %s.\n", PID_FILE);
+		printf("File can't be opened %s.\n", PID_FILE);
 		return -ERR_PIDFILE;
 	}
 
@@ -391,17 +395,17 @@ static int service_start(void)
 
 		if (errno == EPERM) {
 			/** Процесс более приоритетный чтобы ему данный процесс отправил сигнал. */
-			printf("Демон имеет более высокие привелегии.\n");
+			printf("The daemon process is more privileged.\n");
 			return -ERR_SUPER_PROC_EXIST;
 
 		} else if (errno == ESRCH) {
 			/** Процесс не существует в системе. */
-			printf("Процесс был ранее некорректно завершен.\nУдалите pid-файл %s вручную и повтоно запустите программу.\n", PID_FILE);
+			printf("A process was earlier incorrectly finished .\nRemove pid-file %s manually and try to start again.\n", PID_FILE);
 			return -ERR_INCORRECT_EXIT;
 
 		} else {
 			/** Ошибка отправки сигнала. */
-			printf("Ошибка отправки сигнала демону %d.\n", daemon_pid);
+			printf("Error of the signal sending for the daemon %d.\n", daemon_pid);
 			return -ERR_SND_SIG;
 		}
 	}
@@ -412,23 +416,23 @@ static int service_start(void)
 	if (kill(daemon_pid, 0) == 0) {
 
 		/** Процесс существует в системе. */
-		printf("Не удалось завершить демон.\n");
+		printf("The daemon wasn't finished.\n");
 		return -ERR_PROC_EXIST;
 
 	} else {
 
 		if (errno == EPERM) {
 			/** Процесс более приоритетный чтобы ему данный процесс отправил сигнал. */
-			printf("Демон имеет более высокие привелегии.\n");
+			printf("The daemon process is more privileged.\n");
 			return -ERR_SUPER_PROC_EXIST;
 
 		} else if (errno == ESRCH) {
 			/** Процесс не существует в системе. */
-			printf("Демон завершен.\n");
+			printf("The daemon finished.\n");
 
 		} else {
 			/** Ошибка отправки сигнала. */
-			printf("Ошибка отправки сигнала демону %d.\n", daemon_pid);
+			printf("Error of the signal sending for the daemon %d.\n", daemon_pid);
 			return -ERR_SND_SIG;
 
 		}
@@ -499,7 +503,7 @@ int main(uint32_t argc, char *argv[])
 	 */
 
 	if (argc == 1 || argc > 2) {
-		printf("Программа требует обязятельного указания одного аргумента.\n");
+		printf("The program requires at least one argument to be given.\n");
 		display_usage();
 		return -ERR_OPT;
 	}
@@ -545,17 +549,17 @@ int main(uint32_t argc, char *argv[])
 
 	switch (cur_mode) {
 		case daemon:
-			printf("Активирован режим демона.\n");
+			printf("Daemon mode activated.\n");
 			daemon_start();
 			break;
 
 		case client:
-			printf("Активирован режим клиента.\n");
+			printf("Client mode activated.\n");
 			client_start();
 			break;
 
 		case service:
-			printf("Активирован сервисный режим.\n");
+			printf("Service mode activated.\n");
 			service_start();
 			break;
 
